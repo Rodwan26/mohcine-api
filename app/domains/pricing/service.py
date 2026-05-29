@@ -1,0 +1,54 @@
+from uuid import UUID
+
+from app.domains.pricing.repository import PricingRepository
+from app.domains.pricing.events import PriceChanged
+from app.core.uow import UnitOfWork
+from app.core.events import EventPublisher
+
+
+class PricingService:
+    def __init__(self, uow: UnitOfWork, event_bus: EventPublisher | None = None):
+        self.uow = uow
+        self.event_bus = event_bus
+        self.repo = PricingRepository(uow.session)
+
+    async def initialize(self, product_id: UUID, tenant_id: UUID, price: str,
+                         compare_at_price: str | None = None, cost_price: str | None = None):
+        await self.repo.create(
+            product_id=product_id,
+            tenant_id=tenant_id,
+            price=price,
+            compare_at_price=compare_at_price,
+            cost_price=cost_price,
+        )
+
+    async def update_price(self, product_id: UUID, tenant_id: UUID, new_price: str):
+        pricing = await self.repo.find_one(product_id=product_id, tenant_id=tenant_id)
+        if not pricing:
+            return
+        old_price = str(pricing.price)
+        await self.repo.update(pricing, price=new_price)
+        if self.event_bus:
+            await self.event_bus.publish(PriceChanged(
+                product_id=product_id,
+                tenant_id=tenant_id,
+                old_price=old_price,
+                new_price=new_price,
+            ))
+
+    async def get(self, product_id: UUID, tenant_id: UUID):
+        return await self.repo.find_one(product_id=product_id, tenant_id=tenant_id)
+
+
+async def handle_product_created(event_data: dict, session_factory):
+    tenant_id = UUID(event_data["tenant_id"]) if isinstance(event_data["tenant_id"], str) else event_data["tenant_id"]
+    product_id = UUID(event_data["product_id"]) if isinstance(event_data["product_id"], str) else event_data["product_id"]
+    async with UnitOfWork(tenant_id=str(tenant_id), session_factory=session_factory) as uow:
+        svc = PricingService(uow)
+        await svc.initialize(
+            product_id=product_id,
+            tenant_id=tenant_id,
+            price=event_data.get("price", "0.00"),
+            compare_at_price=event_data.get("compare_at_price"),
+        )
+        await uow.commit()
