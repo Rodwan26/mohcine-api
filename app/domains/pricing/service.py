@@ -2,14 +2,14 @@ from uuid import UUID
 
 from app.domains.pricing.repository import PricingRepository
 from app.domains.pricing.events import PriceChanged
+from app.core.outbox import OutboxStore
 from app.core.uow import UnitOfWork
-from app.core.events import EventPublisher
 
 
 class PricingService:
-    def __init__(self, uow: UnitOfWork, event_bus: EventPublisher | None = None):
+    def __init__(self, uow: UnitOfWork):
         self.uow = uow
-        self.event_bus = event_bus
+        self.outbox = OutboxStore(uow.session)
         self.repo = PricingRepository(uow.session)
 
     async def initialize(self, product_id: UUID, tenant_id: UUID, price: str,
@@ -28,16 +28,34 @@ class PricingService:
             return
         old_price = str(pricing.price)
         await self.repo.update(pricing, price=new_price)
-        if self.event_bus:
-            await self.event_bus.publish(PriceChanged(
-                product_id=product_id,
-                tenant_id=tenant_id,
-                old_price=old_price,
-                new_price=new_price,
-            ))
+        await self.outbox.append(PriceChanged(
+            product_id=product_id,
+            tenant_id=tenant_id,
+            old_price=old_price,
+            new_price=new_price,
+        ))
 
     async def get(self, product_id: UUID, tenant_id: UUID):
         return await self.repo.find_one(product_id=product_id, tenant_id=tenant_id)
+
+    @staticmethod
+    async def get_snapshot(session, product_id: UUID, tenant_id: UUID) -> dict | None:
+        from app.domains.pricing.models import ProductPricing
+        from sqlalchemy import select
+        result = await session.execute(
+            select(ProductPricing).where(
+                ProductPricing.product_id == product_id,
+                ProductPricing.tenant_id == tenant_id,
+            )
+        )
+        pricing = result.scalar_one_or_none()
+        if not pricing:
+            return None
+        return {
+            "price": str(pricing.price),
+            "compare_at_price": str(pricing.compare_at_price) if pricing.compare_at_price else None,
+            "cost_price": str(pricing.cost_price) if pricing.cost_price else None,
+        }
 
 
 async def handle_product_created(event_data: dict, session_factory):

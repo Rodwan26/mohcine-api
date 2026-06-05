@@ -2,14 +2,14 @@ from uuid import UUID
 
 from app.domains.inventory.repository import InventoryRepository, InvTxnRepository
 from app.domains.inventory.events import StockChanged
+from app.core.outbox import OutboxStore
 from app.core.uow import UnitOfWork
-from app.core.events import EventPublisher
 
 
 class InventoryService:
-    def __init__(self, uow: UnitOfWork, event_bus: EventPublisher | None = None):
+    def __init__(self, uow: UnitOfWork):
         self.uow = uow
-        self.event_bus = event_bus
+        self.outbox = OutboxStore(uow.session)
         self.repo = InventoryRepository(uow.session)
         self.txn_repo = InvTxnRepository(uow.session)
 
@@ -50,14 +50,13 @@ class InventoryService:
                 idempotency_key=f"adj_{product_id}_{old_qty}_{new_quantity}",
                 note="Manual adjustment",
             )
-        if self.event_bus:
-            await self.event_bus.publish(StockChanged(
-                product_id=product_id,
-                tenant_id=tenant_id,
-                old_quantity=old_qty,
-                new_quantity=new_quantity,
-                reason="adjustment",
-            ))
+        await self.outbox.append(StockChanged(
+            product_id=product_id,
+            tenant_id=tenant_id,
+            old_quantity=old_qty,
+            new_quantity=new_quantity,
+            reason="adjustment",
+        ))
 
     async def reserve(self, product_id: UUID, tenant_id: UUID, quantity: int,
                       idempotency_key: str) -> bool:
@@ -103,14 +102,13 @@ class InventoryService:
             reference=idempotency_key,
             idempotency_key=idempotency_key,
         )
-        if self.event_bus:
-            await self.event_bus.publish(StockChanged(
-                product_id=product_id,
-                tenant_id=tenant_id,
-                old_quantity=inv.quantity,
-                new_quantity=new_qty,
-                reason="sale",
-            ))
+        await self.outbox.append(StockChanged(
+            product_id=product_id,
+            tenant_id=tenant_id,
+            old_quantity=inv.quantity,
+            new_quantity=new_qty,
+            reason="sale",
+        ))
 
     async def release(self, product_id: UUID, tenant_id: UUID, quantity: int,
                       idempotency_key: str):
@@ -140,6 +138,21 @@ class InventoryService:
 
     async def get(self, product_id: UUID, tenant_id: UUID):
         return await self.repo.find_one(product_id=product_id, tenant_id=tenant_id)
+
+    @staticmethod
+    async def get_snapshot(session, product_id: UUID, tenant_id: UUID) -> dict | None:
+        from app.domains.inventory.models import ProductInventory
+        from sqlalchemy import select
+        result = await session.execute(
+            select(ProductInventory).where(
+                ProductInventory.product_id == product_id,
+                ProductInventory.tenant_id == tenant_id,
+            )
+        )
+        inv = result.scalar_one_or_none()
+        if not inv:
+            return None
+        return {"sku": inv.sku, "quantity": inv.quantity}
 
 
 async def handle_product_created(event_data: dict, session_factory):

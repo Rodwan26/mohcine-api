@@ -1,35 +1,15 @@
-# Python
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
+.env
+.env.dev
+.env.prod
+.pytest_cache/
 *.egg-info/
 dist/
 build/
-*.egg
 .venv/
 venv/
-env/
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# Environment (actual secrets, not templates)
-.env
-.env.local
-
-# Testing
-.pytest_cache/
-htmlcov/
-.coverage
-
-# OS
+*.db
 .DS_Store
-Thumbs.db
-
-# Docker
-.docker/
-
-# Logs
-*.log

@@ -1,4 +1,6 @@
-from fastapi import Request, HTTPException
+from uuid import UUID
+
+from fastapi import Request
 from sqlalchemy import select
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
@@ -35,14 +37,18 @@ class TenantMiddleware(BaseHTTPMiddleware):
             )
 
         async with async_session_factory() as session:
-            result = await session.execute(select(Tenant).where(Tenant.id == tenant_id))
+            try:
+                uuid_val = UUID(tenant_id)
+                result = await session.execute(select(Tenant).where(Tenant.id == uuid_val))
+            except ValueError:
+                result = await session.execute(select(Tenant).where(Tenant.slug == tenant_id))
             tenant = result.scalar_one_or_none()
             if not tenant:
                 return JSONResponse(
                     status_code=404,
                     content={"error": {"code": "TENANT_NOT_FOUND", "message": f"Tenant {tenant_id} not found", "details": {}}},
                 )
+            request.state.tenant_id = str(tenant.id)
 
-        request.state.tenant_id = tenant_id
         response = await call_next(request)
         return response

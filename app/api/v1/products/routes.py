@@ -5,7 +5,6 @@ from fastapi import APIRouter, Depends, Query
 from app.api.deps import AuthContext, require_auth
 from app.core.deps import get_uow
 from app.core.uow import UnitOfWork
-from app.core.outbox import OutboxStore
 from app.domains.catalog.service import CatalogService
 from app.domains.catalog.repository import ProductSpec
 from app.domains.catalog.schemas import ProductCreate, ProductUpdate
@@ -61,8 +60,7 @@ async def create_product(
     auth: AuthContext = Depends(require_auth),
     uow: UnitOfWork = Depends(get_uow),
 ):
-    outbox = OutboxStore(uow.session)
-    svc = CatalogService(uow, outbox)
+    svc = CatalogService(uow)
     return await svc.create_product(auth.tenant_id, data)
 
 

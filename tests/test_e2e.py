@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 
-from app.core.outbox import OutboxStore, OutboxWorker
+from app.core.outbox import OutboxWorker
 from app.domains.catalog.service import CatalogService
 from app.domains.catalog.schemas import ProductCreate
 from app.domains.pricing.service import handle_product_created as pricing_handler
@@ -19,8 +19,7 @@ from app.models.event_outbox import EventOutbox
 async def test_product_created_flow_end_to_end(db_engine, tenant_id, test_session_factory, uow):
     """Full flow: create product → outbox → worker processes → pricing + inventory rows exist."""
     # 1. Create product with outbox
-    outbox = OutboxStore(uow.session)
-    svc = CatalogService(uow, event_bus=outbox)
+    svc = CatalogService(uow)
     data = ProductCreate(
         name="E2E Product",
         price=Decimal("49.99"),
@@ -86,8 +85,7 @@ async def test_product_created_flow_end_to_end(db_engine, tenant_id, test_sessio
 @pytest.mark.asyncio
 async def test_product_created_idempotent_handlers(db_engine, tenant_id, test_session_factory, uow):
     """Running the worker twice should not create duplicate pricing/inventory rows."""
-    outbox = OutboxStore(uow.session)
-    svc = CatalogService(uow, event_bus=outbox)
+    svc = CatalogService(uow)
     data = ProductCreate(name="Idempotent", price=Decimal("10.00"), sku="IDEM", quantity=10)
     result = await svc.create_product(tenant_id, data)
     product_id = UUID(result["id"])

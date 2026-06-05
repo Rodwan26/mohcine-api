@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Depends, Header
+from uuid import UUID
+
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, resolve_tenant_id
 from app.core.database import get_db
 from app.models.user import User
 from app.schemas.auth import RegisterRequest, LoginRequest, RefreshRequest
@@ -19,14 +21,14 @@ async def get_auth_service(db: AsyncSession = Depends(get_db)):
 @auth_router.post("/register")
 async def register(
     body: RegisterRequest,
-    x_tenant_id: str = Header(alias="X-Tenant-ID"),
+    tenant_id: UUID = Depends(resolve_tenant_id),
     service: AuthService = Depends(get_auth_service),
 ):
     user = await service.register(
         email=body.email,
         password=body.password,
         name=body.name,
-        tenant_id=x_tenant_id,
+        tenant_id=str(tenant_id),
     )
     return {"data": {"user_id": str(user.id), "email": user.email}}
 
@@ -34,13 +36,13 @@ async def register(
 @auth_router.post("/login")
 async def login(
     body: LoginRequest,
-    x_tenant_id: str = Header(alias="X-Tenant-ID"),
+    tenant_id: UUID = Depends(resolve_tenant_id),
     service: AuthService = Depends(get_auth_service),
 ):
     result = await service.login(
         email=body.email,
         password=body.password,
-        tenant_id=x_tenant_id,
+        tenant_id=str(tenant_id),
     )
     return {"data": result}
 

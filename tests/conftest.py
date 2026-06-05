@@ -12,6 +12,8 @@ from app.models.event_outbox import EventOutbox
 from app.domains.catalog.models import Product, Category, ProductVariant, Media
 from app.domains.pricing.models import ProductPricing
 from app.domains.inventory.models import ProductInventory, InventoryTransaction
+from app.domains.orders.models import Order, OrderItem
+from app.domains.payments.models import Payment
 
 TEST_DB_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/mohcine_test"
 

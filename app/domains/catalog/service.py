@@ -8,16 +8,16 @@ from app.domains.catalog.events import (
     ProductCreated, ProductUpdated, ProductDeleted,
     CategoryCreated, CategoryUpdated, CategoryDeleted,
 )
-from app.core.events import EventPublisher
+from app.core.outbox import OutboxStore
 from app.domains.catalog.schemas import ProductCreate, ProductUpdate
 from app.core.uow import UnitOfWork
 from app.core.slug import generate_slug
 
 
 class CatalogService:
-    def __init__(self, uow: UnitOfWork, event_bus: EventPublisher | None = None):
+    def __init__(self, uow: UnitOfWork):
         self.uow = uow
-        self.event_bus = event_bus
+        self.outbox = OutboxStore(uow.session)
         self.product_repo = ProductRepository(uow.session)
         self.category_repo = CategoryRepository(uow.session)
 
@@ -30,18 +30,16 @@ class CatalogService:
             description=data.description,
             category_id=UUID(data.category_id) if data.category_id else None,
         )
+        await self.outbox.append(ProductCreated(
+            product_id=product.id,
+            tenant_id=tenant_id,
+            name=data.name,
+            price=str(data.price),
+            compare_at_price=str(data.compare_at_price) if data.compare_at_price else None,
+            sku=data.sku,
+            quantity=data.quantity,
+        ))
         await self.uow.commit()
-
-        if self.event_bus:
-            await self.event_bus.publish(ProductCreated(
-                product_id=product.id,
-                tenant_id=tenant_id,
-                name=data.name,
-                price=str(data.price),
-                compare_at_price=str(data.compare_at_price) if data.compare_at_price else None,
-                sku=data.sku,
-                quantity=data.quantity,
-            ))
         return await self.get_product(tenant_id, product.id)
 
     async def update_product(self, tenant_id: UUID, product_id: UUID, data: ProductUpdate) -> dict | None:
@@ -59,15 +57,13 @@ class CatalogService:
             update["slug"] = await generate_slug(data.name, Product, self.uow.session, tenant_id)
         if update:
             await self.product_repo.update(product, **update)
-            await self.uow.commit()
-
-        if self.event_bus:
-            await self.event_bus.publish(ProductUpdated(
+            await self.outbox.append(ProductUpdated(
                 product_id=product.id,
                 tenant_id=tenant_id,
                 name=data.name or product.name,
                 price=str(data.price) if data.price else None,
             ))
+            await self.uow.commit()
         return await self.get_product(tenant_id, product_id)
 
     async def get_product(self, tenant_id: UUID, product_id: UUID) -> dict | None:
@@ -89,9 +85,8 @@ class CatalogService:
         if not product:
             return False
         await self.product_repo.soft_delete(product)
+        await self.outbox.append(ProductDeleted(product_id=product.id, tenant_id=tenant_id))
         await self.uow.commit()
-        if self.event_bus:
-            await self.event_bus.publish(ProductDeleted(product_id=product.id, tenant_id=tenant_id))
         return True
 
     async def create_category(self, tenant_id: UUID, data) -> dict:
@@ -105,10 +100,9 @@ class CatalogService:
             sort_order=data.sort_order,
             image=data.image,
         )
+        await self.outbox.append(CategoryCreated(
+            category_id=category.id, name=category.name, tenant_id=tenant_id))
         await self.uow.commit()
-        if self.event_bus:
-            await self.event_bus.publish(CategoryCreated(
-                category_id=category.id, name=category.name, tenant_id=tenant_id))
         return self._category_to_response(category)
 
     async def update_category(self, tenant_id: UUID, category_id: UUID, data) -> dict | None:
@@ -126,15 +120,29 @@ class CatalogService:
             update["slug"] = await generate_slug(data.name, Category, self.uow.session, tenant_id)
         if update:
             await self.category_repo.update(category, **update)
-            await self.uow.commit()
-        if self.event_bus:
-            await self.event_bus.publish(CategoryUpdated(
+            await self.outbox.append(CategoryUpdated(
                 category_id=category.id, name=category.name, tenant_id=tenant_id))
+            await self.uow.commit()
         return await self.get_category(tenant_id, category_id)
 
     async def get_category(self, tenant_id: UUID, category_id: UUID) -> dict | None:
         category = await self.category_repo.find_one(tenant_id=tenant_id, id=category_id)
         return self._category_to_response(category) if category else None
+
+    @staticmethod
+    async def get_product_snapshot(session, product_id: UUID, tenant_id: UUID) -> dict | None:
+        from app.domains.catalog.models import Product
+        result = await session.execute(
+            select(Product).where(
+                Product.id == product_id,
+                Product.tenant_id == tenant_id,
+                Product.deleted_at.is_(None),
+            )
+        )
+        product = result.scalar_one_or_none()
+        if not product:
+            return None
+        return {"name": product.name, "is_active": product.is_active}
 
     async def list_categories(self, tenant_id: UUID, spec: CategorySpec | None = None) -> list:
         s = spec or CategorySpec(tenant_id=tenant_id)
@@ -150,10 +158,9 @@ class CatalogService:
         if not category:
             return False
         await self.category_repo.soft_delete(category)
+        await self.outbox.append(CategoryDeleted(
+            category_id=category.id, tenant_id=tenant_id))
         await self.uow.commit()
-        if self.event_bus:
-            await self.event_bus.publish(CategoryDeleted(
-                category_id=category.id, tenant_id=tenant_id))
         return True
 
     async def _read_pricing(self, product_id: UUID, tenant_id: UUID):

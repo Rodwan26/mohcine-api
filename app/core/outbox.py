@@ -1,7 +1,7 @@
 import asyncio
-import json
 import logging
 import traceback
+import warnings
 from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -10,13 +10,13 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.core.events import DomainEvent, EventPublisher, EventStatus, EventHandler
+from app.core.events import DomainEvent, EventStatus, EventHandler
 from app.models.event_outbox import EventOutbox
 
 logger = logging.getLogger(__name__)
 
 
-class OutboxStore(EventPublisher):
+class OutboxStore:
     """Appends domain events to event_outbox table in the current UoW transaction.
 
     Does NOT call handlers. The OutboxWorker processes rows asynchronously.
@@ -25,10 +25,15 @@ class OutboxStore(EventPublisher):
     def __init__(self, session: AsyncSession):
         self._session = session
 
-    def subscribe(self, event_type: type, handler: EventHandler) -> None:
-        pass
-
     async def publish(self, event: DomainEvent) -> None:
+        warnings.warn(
+            "publish() is deprecated, use append() instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return await self.append(event)
+
+    async def append(self, event: DomainEvent) -> None:
         raw = asdict(event)
         data = {}
         for k, v in raw.items():

@@ -26,27 +26,3 @@ class DomainEvent:
 EventHandler = Any
 
 
-class EventPublisher:
-    async def publish(self, event: DomainEvent) -> None:
-        ...
-
-    def subscribe(self, event_type: type, handler: EventHandler) -> None:
-        ...
-
-
-class InMemoryAsyncEventBus(EventPublisher):
-    """Dev-only: dispatches handlers inline. Not for production use."""
-
-    def __init__(self):
-        self._handlers: dict[str, list[EventHandler]] = {}
-
-    def subscribe(self, event_type: type, handler: EventHandler) -> None:
-        name = event_type.__name__
-        if name not in self._handlers:
-            self._handlers[name] = []
-        self._handlers[name].append(handler)
-
-    async def publish(self, event: DomainEvent) -> None:
-        handlers = self._handlers.get(event.event_name, [])
-        for handler in handlers:
-            await handler(event)
