@@ -3,6 +3,8 @@ import hashlib
 import os
 from contextlib import asynccontextmanager
 
+from alembic.config import Config
+from alembic import command
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -13,8 +15,7 @@ from app.core.event_registry import EVENT_HANDLERS
 from app.core.outbox import OutboxWorker
 from app.middleware.tenant import TenantMiddleware
 
-# deterministic 31-bit advisory lock ID derived from app name
-LOCK_ID = int(hashlib.sha256(b"mohcine-api").hexdigest()[:8], 16) & 0x7FFFFFFF
+MIGRATION_LOCK_ID = int(hashlib.sha256(b"mohcine-api-migration").hexdigest()[:8], 16) & 0x7FFFFFFF
 
 REQUIRED_TABLES = [
     "tenants",
@@ -26,23 +27,18 @@ REQUIRED_TABLES = [
 ]
 
 _worker: OutboxWorker | None = None
-_lock_conn = None
 
 
-async def acquire_startup_lock():
-    global _lock_conn
-    _lock_conn = await engine.connect()
-    await _lock_conn.execute(text(f"SELECT pg_advisory_lock({LOCK_ID})"))
-    await _lock_conn.commit()
+def _run_alembic_upgrade():
+    cfg = Config("alembic.ini")
+    command.upgrade(cfg, "head")
 
 
-async def release_startup_lock():
-    global _lock_conn
-    if _lock_conn is not None:
-        await _lock_conn.execute(text(f"SELECT pg_advisory_unlock({LOCK_ID})"))
-        await _lock_conn.commit()
-        await _lock_conn.close()
-        _lock_conn = None
+async def run_migrations():
+    if os.getenv("AUTO_MIGRATE", "true") != "true":
+        return
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, _run_alembic_upgrade)
 
 
 async def verify_schema():
@@ -54,7 +50,7 @@ async def verify_schema():
             )
             if result.scalar() is None:
                 raise RuntimeError(
-                    f"schema missing required table: {table} — run migrations first"
+                    f"schema missing required table: {table} — migrations failed or skipped"
                 )
 
 
@@ -68,13 +64,20 @@ def start_outbox_worker():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await acquire_startup_lock()
+    async with engine.connect() as conn:
+        await conn.execute(text(f"SELECT pg_advisory_lock({MIGRATION_LOCK_ID})"))
+        await conn.commit()
+        try:
+            await run_migrations()
+        finally:
+            await conn.execute(text(f"SELECT pg_advisory_unlock({MIGRATION_LOCK_ID})"))
+            await conn.commit()
+
     await verify_schema()
     start_outbox_worker()
     yield
     if _worker:
         await _worker.stop()
-    await release_startup_lock()
 
 
 app = FastAPI(
