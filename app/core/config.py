@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,6 +20,13 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @model_validator(mode="after")
+    def normalize_database_url(self) -> "Settings":
+        url = self.DATABASE_URL
+        if url.startswith("postgresql://") and "+asyncpg" not in url:
+            self.DATABASE_URL = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return self
 
 
 settings = Settings()

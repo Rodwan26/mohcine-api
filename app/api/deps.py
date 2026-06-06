@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import decode_access_token
 from app.core.exceptions import Unauthorized, NotFound
-from app.models.tenant import Tenant
 from app.models.user import User
 
 
@@ -18,18 +17,11 @@ class AuthContext:
     tenant_id: UUID
 
 
-async def resolve_tenant_id(
-    x_tenant_id: str = Header(alias="X-Tenant-ID"),
-    db: AsyncSession = Depends(get_db),
-) -> UUID:
-    try:
-        return UUID(x_tenant_id)
-    except ValueError:
-        result = await db.execute(select(Tenant).where(Tenant.slug == x_tenant_id))
-        tenant = result.scalar_one_or_none()
-        if not tenant:
-            raise NotFound(message=f"Tenant '{x_tenant_id}' not found")
-        return tenant.id
+async def resolve_tenant_id(request: Request) -> UUID:
+    tenant_id = getattr(request.state, "tenant_id", None)
+    if not tenant_id:
+        raise NotFound(message="Tenant not found in request context")
+    return UUID(tenant_id)
 
 
 async def get_current_tenant(request: Request) -> str:

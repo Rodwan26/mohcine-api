@@ -72,7 +72,7 @@ class OutboxWorker:
         self,
         session_factory: async_sessionmaker[AsyncSession],
         handlers: dict[str, list[Callable]] | None = None,
-        poll_interval: float = 2.0,
+        poll_interval: float = 5.0,
         batch_size: int = 50,
         max_retries: int = 5,
     ):
