@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     DATABASE_URL: str
-    REDIS_URL: str
+    REDIS_URL: str | None = None
 
     SECRET_KEY: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
