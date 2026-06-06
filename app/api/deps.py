@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.deps import require_tenant
 from app.core.security import decode_access_token
 from app.core.exceptions import Unauthorized, NotFound
 from app.models.user import User
@@ -17,11 +18,10 @@ class AuthContext:
     tenant_id: UUID
 
 
-async def resolve_tenant_id(request: Request) -> UUID:
-    tenant_id = getattr(request.state, "tenant_id", None)
-    if not tenant_id:
-        raise NotFound(message="Tenant not found in request context")
-    return UUID(tenant_id)
+async def resolve_tenant_id(
+    tenant_id: UUID = Depends(require_tenant),
+) -> UUID:
+    return tenant_id
 
 
 async def get_current_tenant(request: Request) -> str:

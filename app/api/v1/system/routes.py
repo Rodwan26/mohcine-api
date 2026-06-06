@@ -7,7 +7,7 @@ from app.api.v1.system.schemas import BootstrapRequest, BootstrapResponse, Syste
 from app.core.database import get_db
 from app.services.bootstrap import BootstrapService
 
-system_router = APIRouter(prefix="/system", tags=["system"])
+system_router = APIRouter(tags=["system"])
 
 
 async def verify_setup_key(setup_key: str = Header(alias="X-Setup-Key")) -> None:

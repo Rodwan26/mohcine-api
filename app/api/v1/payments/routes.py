@@ -8,7 +8,7 @@ from app.core.uow import UnitOfWork
 from app.domains.payments.service import PaymentService
 from app.domains.payments.schemas import PaymentCreate, PaymentResponse
 
-payment_router = APIRouter(prefix="/payments", tags=["Payments"])
+payment_router = APIRouter(tags=["Payments"])
 
 
 @payment_router.post("", status_code=201, response_model=PaymentResponse)

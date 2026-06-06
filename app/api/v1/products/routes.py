@@ -9,7 +9,7 @@ from app.domains.catalog.service import CatalogService
 from app.domains.catalog.repository import ProductSpec
 from app.domains.catalog.schemas import ProductCreate, ProductUpdate
 
-product_router = APIRouter(prefix="/products", tags=["Products"])
+product_router = APIRouter(tags=["Products"])
 
 
 @product_router.get("")

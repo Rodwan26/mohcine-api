@@ -8,7 +8,7 @@ from app.core.uow import UnitOfWork
 from app.domains.orders.service import OrderService
 from app.domains.orders.schemas import OrderCreate, OrderResponse, OrderListResponse
 
-order_router = APIRouter(prefix="/orders", tags=["Orders"])
+order_router = APIRouter(tags=["Orders"])
 
 
 @order_router.post("", status_code=201, response_model=OrderResponse)

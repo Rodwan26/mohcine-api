@@ -9,7 +9,7 @@ from app.domains.catalog.service import CatalogService
 from app.domains.catalog.repository import CategorySpec
 from app.domains.catalog.schemas import CategoryCreate, CategoryUpdate
 
-category_router = APIRouter(prefix="/categories", tags=["Categories"])
+category_router = APIRouter(tags=["Categories"])
 
 
 @category_router.get("")

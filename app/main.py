@@ -14,7 +14,7 @@ from app.api.v1.router import api_v1_router
 from app.core.database import engine, async_session_factory
 from app.core.event_registry import EVENT_HANDLERS
 from app.core.outbox import OutboxWorker
-from app.middleware.tenant import TenantMiddleware
+from app.middleware.tenant import TenantContextMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +113,9 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
-app.add_middleware(TenantMiddleware)
+
+app.add_middleware(TenantContextMiddleware)
+
 app.include_router(api_v1_router, prefix="/api/v1")
 
 

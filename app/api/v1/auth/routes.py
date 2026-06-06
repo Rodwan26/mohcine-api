@@ -10,7 +10,7 @@ from app.schemas.auth import RegisterRequest, LoginRequest, RefreshRequest
 from app.services.auth_service import AuthService
 from app.services.token_store import TokenStore
 
-auth_router = APIRouter(prefix="/auth", tags=["auth"])
+auth_router = APIRouter(tags=["auth"])
 
 
 async def get_auth_service(db: AsyncSession = Depends(get_db)):
