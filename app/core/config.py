@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     REDIS_URL: str | None = None
 
     SECRET_KEY: str
+    SETUP_KEY: str | None = None
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 

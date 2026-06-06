@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -14,6 +15,8 @@ from app.core.database import engine, async_session_factory
 from app.core.event_registry import EVENT_HANDLERS
 from app.core.outbox import OutboxWorker
 from app.middleware.tenant import TenantMiddleware
+
+logger = logging.getLogger(__name__)
 
 MIGRATION_LOCK_ID = int(hashlib.sha256(b"mohcine-api-migration").hexdigest()[:8], 16) & 0x7FFFFFFF
 
@@ -54,6 +57,17 @@ async def verify_schema():
                 )
 
 
+async def verify_bootstrap():
+    async with engine.connect() as conn:
+        result = await conn.execute(text("SELECT COUNT(*) FROM tenants"))
+        count = result.scalar()
+        if count == 0:
+            logger.warning(
+                "System not bootstrapped: no tenants found. "
+                "POST /api/v1/system/bootstrap with X-Setup-Key to initialize."
+            )
+
+
 def start_outbox_worker():
     global _worker
     if os.getenv("ENABLE_OUTBOX", "true") != "true":
@@ -74,6 +88,7 @@ async def lifespan(app: FastAPI):
             await conn.commit()
 
     await verify_schema()
+    await verify_bootstrap()
     start_outbox_worker()
     yield
     if _worker:
