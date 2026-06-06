@@ -1,0 +1,55 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: mohcine_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/mohcine_test
+      SECRET_KEY: ci-secret-key-not-used-in-tests
+      DEBUG: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Apply migrations to test DB
+        run: alembic upgrade head
+
+      - name: Check no model/migration drift
+        run: alembic revision --autogenerate --dry-run
+
+      - name: Check no migration forks
+        run: |
+          HEADS=$(alembic heads --verbose 2>&1 | wc -l)
+          [ "$HEADS" -eq 1 ] || (echo "ERROR: migration fork detected"; exit 1)
+
+      - name: Run tests
+        run: pytest -q
